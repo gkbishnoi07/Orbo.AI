@@ -45,13 +45,13 @@ class IrritantRule:
 IRRITANT_RULES: tuple[IrritantRule, ...] = (
     IrritantRule(
         "fragrance",
-        "added fragrance",
+        "contain added fragrance",
         ("parfum", "fragrance)"),
         waived_by=("Fragrance Free",),
     ),
     IrritantRule(
         "drying_alcohol",
-        "drying alcohol",
+        "contain drying alcohol",
         # Deliberately specific. A bare "alcohol" match would also catch cetyl
         # and stearyl alcohol, which are fatty alcohols and are emollients —
         # the opposite of an irritant.
@@ -60,7 +60,7 @@ IRRITANT_RULES: tuple[IrritantRule, ...] = (
     ),
     IrritantRule(
         "essential_oils",
-        "fragrant essential oils",
+        "contain fragrant essential oils",
         (
             "essential oil",
             "limonene",
@@ -73,7 +73,7 @@ IRRITANT_RULES: tuple[IrritantRule, ...] = (
     ),
     IrritantRule(
         "harsh_surfactant",
-        "harsh sulfate surfactant",
+        "contain a harsh sulfate surfactant",
         ("sodium lauryl sulfate",),
         waived_by=("Without Sulfates SLS & SLES",),
     ),
@@ -182,5 +182,5 @@ def exclusion_breakdown(
         mismatch = ~skin_type_flags[skin_type] & ~skin_type_flags["untagged"]
         count = int(mismatch.sum())
         if count:
-            breakdown["tagged for other skin types"] = count
+            breakdown[f"are labelled for a skin type other than {skin_type}"] = count
     return breakdown

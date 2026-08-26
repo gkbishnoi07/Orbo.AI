@@ -133,6 +133,7 @@ class Explainer:
             ),
             supported=share >= 0.5,
             detail=f"based on {n_reviews:,} reviews from {query.skin_type}-skin users",
+            kind="evidence",
         )
 
     def _skin_type_evidence(self, product, query: Query) -> list[Evidence]:
@@ -145,6 +146,7 @@ class Explainer:
                     label="No skin-type suitability recorded for this product",
                     supported=False,
                     detail="88% of the catalogue is untagged, so this is not a mismatch",
+                    kind="caveat",
                 )
             ]
         return [
@@ -152,6 +154,7 @@ class Explainer:
                 label=f"Suitable for {query.skin_type} skin",
                 supported=query.skin_type in tagged,
                 detail=f"tagged for {', '.join(tagged)}",
+                kind="match" if query.skin_type in tagged else "caveat",
             )
         ]
 
@@ -168,6 +171,7 @@ class Explainer:
                     detail="from the product's own highlights"
                     if slug in addressed
                     else "not listed among this product's highlights",
+                    kind="match" if slug in addressed else "caveat",
                 )
             )
         return lines
@@ -181,6 +185,7 @@ class Explainer:
                 label=f"Contains {', '.join(present)}",
                 supported=True,
                 detail="listed in the product highlights",
+                kind="match",
             )
         ]
 
@@ -195,11 +200,13 @@ class Explainer:
                 label="Could not check for common irritants",
                 supported=False,
                 detail="no ingredient list published for this product",
+                kind="caveat",
             )
         return Evidence(
             label="No fragrance, drying alcohol or harsh sulfates in the ingredients",
             supported=True,
             detail="checked against the full ingredient list",
+            kind="match",
         )
 
     def _quality_evidence(self, product) -> list[Evidence]:
@@ -213,6 +220,7 @@ class Explainer:
                 label=f"Rated {float(rating):.1f} out of 5",
                 supported=float(rating) >= POSITIVE_RATING,
                 detail=f"from {count:,} reviews" if count else "few reviews so far",
+                kind="evidence",
             )
         ]
 
@@ -224,4 +232,5 @@ class Explainer:
             label=f"${float(price):.0f}, within your ${query.budget_max:.0f} budget",
             supported=float(price) <= query.budget_max,
             detail="",
+            kind="match",
         )

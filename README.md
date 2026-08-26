@@ -22,11 +22,11 @@ Built on the Sephora Products and Skincare Reviews dataset: 8,494 products and
 | Hybrid and MMR reranker | done |
 | Explanations | done |
 | Evaluation + weight sweep | done — `reports/evaluation.md`, `reports/weight_sweep.md` |
-| UI | not started |
+| UI | done — Streamlit, `app.py` |
 | Deployment | not started |
 | Full documentation | not started |
 
-114 tests passing.
+143 tests passing.
 
 ## Setup
 

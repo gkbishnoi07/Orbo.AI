@@ -1,0 +1,65 @@
+# Committed so every evaluator sees the same design.
+#
+# Both palettes are specified in full so the reader's Light / Dark / System
+# choice actually works. The custom CSS in app.py keys off a `data-appearance`
+# attribute that a small injected script derives from the background Streamlit
+# really rendered — see THEME_SYNC there. Earlier revisions keyed the custom CSS
+# off `prefers-color-scheme`, which follows the *operating system* and therefore
+# disagreed with an explicit in-app choice: Streamlit repainted white while the
+# custom markup stayed on its dark palette, leaving grey text on white.
+#
+# `base` is inheritance only — which built-in theme unset options fall back to —
+# and is unnecessary when both palettes are complete.
+
+[theme]
+font = "Inter, -apple-system, 'Segoe UI', sans-serif"
+headingFont = "'Instrument Serif', Georgia, serif"
+baseRadius = "0.7rem"
+buttonRadius = "0.55rem"
+showSidebarBorder = true
+
+# Warm ivory canvas, deep charcoal ink, muted berry reserved for primary actions.
+[theme.light]
+primaryColor = "#A32E4E"
+backgroundColor = "#FDFBF9"
+secondaryBackgroundColor = "#F3EDE8"
+textColor = "#1F1B1E"
+borderColor = "#DED3CB"
+linkColor = "#A32E4E"
+
+[theme.light.sidebar]
+backgroundColor = "#F7F2EE"
+secondaryBackgroundColor = "#EDE4DC"
+borderColor = "#DFD4CC"
+primaryColor = "#A32E4E"
+textColor = "#1F1B1E"
+
+# The same design after dark: warm-shifted near-black rather than blue-grey, and
+# the accent lifted well past the light-mode berry, which fails contrast on a
+# dark ground.
+[theme.dark]
+primaryColor = "#E68DA3"
+backgroundColor = "#17141A"
+secondaryBackgroundColor = "#221D26"
+textColor = "#F3EDEF"
+borderColor = "#3A323E"
+linkColor = "#E68DA3"
+
+[theme.dark.sidebar]
+backgroundColor = "#1B171F"
+secondaryBackgroundColor = "#262029"
+borderColor = "#3A323E"
+primaryColor = "#E68DA3"
+textColor = "#F3EDEF"
+
+[client]
+# "viewer" keeps the theme control and drops the developer options. Print and
+# Record screen also live in this menu and Streamlit offers no setting to remove
+# them individually, so THEME_SYNC in app.py hides those two entries directly.
+toolbarMode = "viewer"
+
+[server]
+enableStaticServing = false
+
+[browser]
+gatherUsageStats = false

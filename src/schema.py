@@ -129,18 +129,33 @@ class Query:
         return len(self.liked_product_ids) == 0
 
 
+EVIDENCE_KINDS = ("match", "evidence", "caveat")
+"""How an explanation line should be grouped when shown.
+
+* `match`    — a criterion the user asked for that this product satisfies.
+* `evidence` — a measurement backing the recommendation up, such as a cohort
+               percentage or the product's own rating.
+* `caveat`   — something unmet, or something that could not be verified.
+
+Presentation metadata only: nothing here affects scoring or ranking. It exists
+so the UI can group lines without pattern-matching on their wording, which
+breaks the moment a label is reworded.
+"""
+
+
 @dataclass
 class Evidence:
     """One line of a recommendation's explanation card.
 
     `supported` distinguishes a claim we verified from a claim we could not
     check. `detail` carries the sample size or measured value so the UI can
-    show the user what the claim rests on.
+    show the user what the claim rests on. `kind` is a grouping hint.
     """
 
     label: str
     supported: bool
     detail: str = ""
+    kind: str = "match"
 
 
 @dataclass
