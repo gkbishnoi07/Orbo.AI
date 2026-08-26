@@ -1,0 +1,6 @@
+# Offline / development dependencies: dataset prep, embedding, tests.
+# Never imported by app.py.
+-r requirements.txt
+kaggle>=1.6
+sentence-transformers>=2.2
+pytest>=8.0

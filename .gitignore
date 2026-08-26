@@ -1,0 +1,30 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Raw dataset is large and Kaggle-licensed: not redistributed. See README.
+data/raw/*
+!data/raw/.gitkeep
+
+# Derived tables are rebuilt by scripts/, except the small committed sample
+# that lets the deployed app and the reviewer run without Kaggle access.
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/sample/
+
+# The deployed app has no Kaggle credentials and cannot parse 530MB of CSV on a
+# cold start, so the precomputed files it reads are committed (~34MB total).
+# Anything else that lands here is scratch.
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/products.parquet
+!artifacts/interactions.parquet
+!artifacts/cohort_stats.parquet
+!artifacts/embedding_ids.json
+!artifacts/embeddings_tfidf.npy
+!artifacts/embeddings_minilm.npy
+
+.DS_Store
+*:Zone.Identifier
