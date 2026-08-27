@@ -700,39 +700,8 @@ def test_the_approach_selector_still_applies_to_personalised_results():
 
 
 # --------------------------------------------------------------------------
-# Editing a profile after submitting it
+# Mobile: the sidebar must get out of the way of the results
 # --------------------------------------------------------------------------
-
-
-def test_the_sidebar_carries_its_own_reset():
-    """A radio cannot be unselected by clicking it again.
-
-    Without a reset beside the inputs there is no route back to "no skin type"
-    once one is chosen — and on a phone the results-header button is off-screen
-    while the sidebar is open, which is exactly when someone wants to change it.
-    """
-    app = run_app()
-    assert widget(app.button, "Clear all").disabled, (
-        "nothing to clear on an empty profile"
-    )
-
-    widget(app.sidebar.radio, "Skin type").set_value("dry")
-    app.run()
-    assert not widget(app.button, "Clear all").disabled
-
-
-def test_the_sidebar_reset_empties_the_profile_after_results_are_showing():
-    app = show_results(run_app())
-    assert product_ids(app)
-
-    widget(app.button, "Clear all").click()
-    app.run()
-
-    assert not app.exception
-    assert product_ids(app) == []
-    assert widget(app.sidebar.radio, "Skin type").value is None
-    assert widget(app.sidebar.pills, "Concerns").value == []
-    assert len(re.findall(r'class="stepcol"', all_text(app))) == 3
 
 
 def test_submitting_asks_the_sidebar_to_collapse_on_small_screens():

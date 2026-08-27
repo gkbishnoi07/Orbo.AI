@@ -590,17 +590,6 @@ def render_sidebar(service: RecommendationService) -> dict:
         submitted = st.button(
             f"✦  {FIND_LABEL}", type="primary", width="stretch", disabled=not has_profile
         )
-        # A radio cannot be unselected by clicking it again, so without this there
-        # is no way back to "no skin type" once one is chosen — the reset lives
-        # beside the inputs it resets, not only up in the results header.
-        st.button(
-            "Clear all",
-            width="stretch",
-            on_click=clear_filters,
-            disabled=not has_profile,
-            help="Empties every field and returns to the start.",
-            key="sidebar_clear",
-        )
         if not has_profile:
             st.caption("Pick a skin type or a concern to continue.")
 
