@@ -48,9 +48,16 @@ beauty recommendation that a shopper cannot audit is a guess with a UI.
 
 ## Use case and motivation
 
-Chosen deliberately over the conventional MovieLens exercise because it mirrors
-Orbo.AI's actual product surface — skin analysis, shade matching, a beauty
-recommender — and because beauty exposes problems a movie dataset does not:
+I chose a beauty and skincare recommender because Orbo.AI works in this domain —
+visual skin analysis, shade matching, product recommendation — so the design
+decisions here are the same ones the company's own products have to make. The
+easier option was a MovieLens or generic e-commerce dataset, which is what most
+tutorials use and what I would have reached for if I only wanted to show that I
+can build a recommender. I picked beauty because it makes the problem harder in
+ways worth demonstrating: hard suitability constraints, cohorts that mean
+something specific, and explanations where being wrong actually matters.
+
+Those three things shaped most of the architecture below:
 
 - **Suitability is not preference.** A fragranced serum is not merely a worse
   match for reactive skin; it is a wrong answer. Some constraints must override
@@ -376,7 +383,7 @@ interchangeable. Both are measured, neither is typed into this file:
 | **End-to-end recommendation** — inference + explanation generation, k=20 | measured live, shown in the UI's result strip | ~16 ms | ~31 ms |
 
 Neither includes Streamlit rendering or network time, so neither is what a
-browser tab experiences. Cold start is ~5 s, almost entirely rebuilding the
+browser tab experiences. Cold start is ~2.8 s, almost entirely rebuilding the
 cohort similarity matrices, cached thereafter for the life of the container.
 
 Earlier revisions of this README quoted "26 ms p95" without saying which of the
@@ -567,10 +574,6 @@ canonical names only, so swapping the dataset touches exactly one file.
 **Live at https://orboai.streamlit.app/** — no setup, no account needed.
 
 Hosted on Streamlit Community Cloud, which redeploys on every push to `main`.
-The app needs nothing but this repository: `requirements.txt` resolves to 44
-packages with no `torch`, and it reads only the committed `artifacts/`. Cold
-start is a few seconds, almost entirely rebuilding the cohort similarity
-matrices, which are then cached for the life of the container.
 
 Requires Python **3.10+**. No floor is declared in the repo (no
 `.python-version` or `pyproject.toml`), so the version is selected in the
