@@ -97,6 +97,37 @@ PAGE_SIZE = 20
 MAX_SHOWN = 100
 
 
+# Injected once, only on the render immediately after a submit. Streamlit has no
+# Python API for collapsing the sidebar, and on a phone the open panel covers the
+# results the user just asked for — they press "Find my products" and appear to
+# get nothing. Clicking Streamlit's own collapse control is the only route; it
+# carries a stable `data-testid`, and the width check keeps desktop untouched
+# where the sidebar costs nothing.
+COLLAPSE_SIDEBAR_ON_MOBILE = """
+<script>
+(function () {
+  const doc = window.parent && window.parent.document;
+  if (!doc) return;
+  const NARROW = 768;
+
+  function collapse(attempt) {
+    if (window.parent.innerWidth > NARROW) return;
+    const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+    // aria-expanded is the only reliable signal that it is still open; without
+    // it a retry would keep re-clicking and toggle the panel back open.
+    if (sidebar && sidebar.getAttribute("aria-expanded") === "false") return;
+    const button = doc.querySelector('[data-testid="stSidebarCollapseButton"] button')
+      || doc.querySelector('[data-testid="stSidebarCollapseButton"]');
+    if (button) { button.click(); return; }
+    // The control mounts a beat after the rerun paints.
+    if (attempt < 12) setTimeout(() => collapse(attempt + 1), 120);
+  }
+  collapse(0);
+})();
+</script>
+"""
+
+
 def show_more() -> None:
     current = st.session_state.get("shown", PAGE_SIZE)
     st.session_state.shown = min(current + PAGE_SIZE, MAX_SHOWN)
@@ -559,6 +590,17 @@ def render_sidebar(service: RecommendationService) -> dict:
         submitted = st.button(
             f"✦  {FIND_LABEL}", type="primary", width="stretch", disabled=not has_profile
         )
+        # A radio cannot be unselected by clicking it again, so without this there
+        # is no way back to "no skin type" once one is chosen — the reset lives
+        # beside the inputs it resets, not only up in the results header.
+        st.button(
+            "Clear all",
+            width="stretch",
+            on_click=clear_filters,
+            disabled=not has_profile,
+            help="Empties every field and returns to the start.",
+            key="sidebar_clear",
+        )
         if not has_profile:
             st.caption("Pick a skin type or a concern to continue.")
 
@@ -898,7 +940,13 @@ def main() -> None:
     if profile["submitted"]:
         st.session_state.mode = "personalised"
         st.session_state.shown = PAGE_SIZE  # a new profile starts a new list
+        st.session_state.collapse_sidebar = True
         st.rerun()
+
+    # One-shot: consumed here so it fires on this render only, never on the
+    # reruns that follow when a filter is nudged.
+    if st.session_state.pop("collapse_sidebar", False):
+        components.html(COLLAPSE_SIDEBAR_ON_MOBILE, height=0)
 
     render_hero()
 
@@ -915,6 +963,7 @@ def main() -> None:
                 help="Skips personalisation and ranks by what everyone rates highly.",
             ):
                 st.session_state.mode = "popular"
+                st.session_state.collapse_sidebar = True
                 st.rerun()
         st.markdown('<div class="rule"></div>', unsafe_allow_html=True)
         render_about(service, Query())
