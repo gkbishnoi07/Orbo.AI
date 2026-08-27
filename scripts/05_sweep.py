@@ -152,7 +152,10 @@ def main() -> int:
             "",
             f"{len(warm):,} warm cases, {len(cold):,} cold cases, k={args.k}, "
             f"embeddings `{args.method}`. Sub-models fitted once on the training "
-            "split; only the blend weights change between rows.",
+            "split; only the blend weights change between rows. The sweep model "
+            "carries no skin-tone layer, so every row here is content / CF / "
+            "popularity only — the shipped hybrid has a fourth term and its "
+            "recorded numbers live in `reports/evaluation.json`.",
             "",
             "## Warm-start blend",
             "",
@@ -172,6 +175,15 @@ def main() -> int:
             "",
             "The relevance-for-variety trade, measured. Diversity is the column "
             "this is bought with; NDCG is the column it is paid for from.",
+            "",
+            "Check the configuration before comparing these rows against numbers "
+            f"reported elsewhere. This section runs on warm cases with the blend "
+            f"left at `{best_warm}` — the NDCG winner of the grid above, not the "
+            "shipped weights — and, like every row in this file, without the "
+            "skin-tone layer. So it measures MMR on top of *that* blend. The "
+            "shipped hybrid's own diversity is in `reports/evaluation.json`, and "
+            "it is a lower number for that reason, not because the metric "
+            "changed.",
             "",
             as_markdown(mmr_table),
             "",

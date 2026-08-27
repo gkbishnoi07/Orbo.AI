@@ -12,7 +12,7 @@ what it satisfies, and it cannot invent a claim.
 | --- | --- |
 | **Live app** | **https://orboai.streamlit.app/** |
 | **Repo** | https://github.com/gkbishnoi07/Orbo.AI |
-| **Tests** | 186, all passing |
+| **Tests** | 187, all passing |
 | **Latency** | ~16 ms typical, ~31 ms p95 end-to-end (see [Latency](#latency)) |
 
 ---
@@ -106,7 +106,7 @@ OFFLINE (run once, results committed)
   scripts/02_embed.py    ──► TF-IDF + MiniLM vectors
   scripts/03_build_artifacts.py ──► artifacts/  34 MB, committed
 
-RUNTIME (per request, ~20 ms)
+RUNTIME (per request, ~12 ms p95)
   Query ──► _apply_filters ──► content ─┐
              (budget,          cohort CF ├─► blend ──► MMR ──► Explainer ──► cards
               category,        popularity┘
@@ -181,11 +181,16 @@ Weights differ by regime, because cold start is a different problem:
 | Returning user | 0.15 | 0.80 | 0.05 |
 | New user | 0.10 | 0.30 | 0.60 |
 
-Then greedy **MMR** at λ=0.85, chosen from the sweep because it cost 0.08% NDCG
-for 7.9% more intra-list diversity. Worth stating plainly: on this catalogue a
-naive one-product-per-brand cap reaches the same measured intra-list diversity
-(0.8372). MMR is kept because it generalises to similarity the brand field does
-not capture, not because the measurement favours it.
+Then greedy **MMR** at λ=0.85, which in the shipped blend lifts intra-list
+diversity from 0.680 to 0.740 while NDCG@10 rises 1.0%. Worth stating plainly: a
+naive one-product-per-brand cap reaches the same variety (0.743) — so the
+diversity number alone does not justify MMR. What justifies it is the price: the
+brand cap costs 6.4% of NDCG@10 to get there, and it only knows about brands,
+not about ten near-identical niacinamide serums from ten different houses.
+
+The sweep's own λ table reports 0.7658 at λ=0.85 rather than 0.740. That section
+runs after the warm grid has set the blend to `0.05/0.95/0.00` and uses no tone
+layer, so it measures MMR on a near-pure-CF blend, not on the shipped hybrid.
 
 ### Skin-tone affinity — `src/tone.py`
 
@@ -232,7 +237,8 @@ cohort-scoped collaborative filtering is not possible.
 | Reviews | 1,094,411 raw → 1,088,886 after de-duplication |
 | Positive interactions (4★+) | 893,393 |
 | Distinct reviewers | 503,216 |
-| Products with any review | **2,343 (27.6%)** |
+| Products with a positive rating (4★+) | **2,343 (27.6%)** |
+| Products with any review at all | 2,351 (27.7%) |
 | Matrix density | 0.09% |
 | `skin_type` populated | 89.9% (4 values) |
 | `skin_tone` populated | 84.5% (14 values → 5 bands) |
@@ -396,14 +402,19 @@ two it was. It was model inference at k=10, excluding explanations.
 machine-readable form in [`reports/evaluation.json`](reports/evaluation.json),
 which is what the app's Model performance tab reads.
 
-| Model | NDCG@10 warm | NDCG@10 cold | Recommendation coverage | p95 latency |
-| --- | --- | --- | --- | --- |
-| random | 0.0004 | 0.0000 | 68.8% | 22 ms |
-| popularity | 0.0307 | **0.0693** | 0.2% | 22 ms |
-| content (TF-IDF) | 0.2404 | 0.0019 | 16.6% | 16 ms |
-| content (MiniLM) | 0.1166 | 0.0024 | 11.0% | 17 ms |
-| cohort CF | **0.4135** | 0.0693 | 15.5% | 20 ms |
-| hybrid (TF-IDF) | 0.4115 | 0.0651 | 14.1% | 19 ms |
+| Model | NDCG@10 warm | NDCG@10 cold | Recommendation coverage | Diversity (warm) | p95 latency |
+| --- | --- | --- | --- | --- | --- |
+| random | 0.0004 | 0.0000 | 68.8% | 0.904 | 7.6 ms |
+| popularity | 0.0307 | **0.0693** | 0.2% | 0.874 | 6.9 ms |
+| content (TF-IDF) | 0.2404 | 0.0019 | 16.6% | 0.521 | 9.8 ms |
+| content (MiniLM) | 0.1166 | 0.0024 | 11.0% | 0.646 | 10.4 ms |
+| cohort CF | **0.4135** | 0.0693 | 15.5% | 0.748 | 7.2 ms |
+| hybrid (TF-IDF) | 0.4112 | 0.0653 | 14.2% | 0.740 | 12.2 ms |
+
+Latency is model inference only, and coverage is the share of the catalogue a
+model *returned* across the run — not the share it is able to score. The
+diversity column is the shipped configuration; see the note under the reranker
+above for why `reports/weight_sweep.md` reports a higher figure for the same λ.
 
 Three findings, including the unflattering one.
 
@@ -412,9 +423,9 @@ field, so the text is brand, name, category, highlight tokens and an INCI
 ingredient list — keyword soup, where exact term overlap does more work than
 semantic similarity. Both were built and measured rather than assumed.
 
-**The hybrid does not beat cohort CF alone** (0.4115 vs 0.4135), and the weight
-sweep is blunter still: on NDCG the optimum is degenerate — pure CF warm, pure
-popularity cold. That is largely a limitation of the protocol. Held-out items are
+**The hybrid does not beat cohort CF alone** (0.4112 vs 0.4135), and the weight
+sweep is blunter still: on NDCG the optimum is near-degenerate — 95% CF warm,
+pure popularity cold. That is largely a limitation of the protocol. Held-out items are
 drawn from the review table, so **every correct answer is a product that already
 has reviews**; the 6,151 products with none can never register as a hit, and the
 content layer's whole contribution is invisible to the measurement. The shipped
@@ -440,11 +451,12 @@ pool, and skin tone being collected but not scored.
 
 ## Known limitations
 
-1. **Cold start barely beats popularity** (0.0651 vs 0.0693). With a profile and
+1. **Cold start barely beats popularity** (0.0653 vs 0.0693). With a profile and
    no history there is little to personalise on.
 2. **The hybrid loses to CF alone on offline accuracy**, and the offline metric
    structurally cannot see what the content layer adds.
-3. **CF is blind to 72% of the catalogue.** Only 2,343 products have any review.
+3. **CF is blind to 72% of the catalogue.** Only 2,343 products have a positive
+   rating to learn from (2,351 have any review at all).
 4. **Skin tone is a weak signal, and deliberately so.** It now affects ranking
    (`src/tone.py`) but only as a shrunk nudge, and it visibly moves results only
    for the `deep`, `medium` and `tan` bands — `fair` and `light` dominate the
@@ -560,7 +572,7 @@ src/artifacts.py            loads the committed runtime files
 src/service.py              composition root shared by the UI and the test cases
 src/tone.py                 skin-tone affinity (shrunk, signed ranking nudge)
 scripts/00..06              download, audit, embed, build, evaluate, sweep, cases
-tests/                      186 tests
+tests/                      187 tests
 reports/                    audit, evaluation, sweep, test cases
 artifacts/                  34 MB of committed runtime files
 docs/comparison.md          bonus: Sephora / Nykaa comparison

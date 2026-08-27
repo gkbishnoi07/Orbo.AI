@@ -166,7 +166,13 @@ def test_weights_sum_to_one_in_both_regimes(model):
 
 
 def test_mmr_default_trades_almost_no_relevance(model):
-    """0.85 was chosen because it cost 0.08% NDCG for +7.9% diversity."""
+    """0.85 was chosen from the λ table in `reports/weight_sweep.md`, where it
+    buys roughly +9% intra-list diversity for no measurable NDCG.
+
+    The figures live in the report rather than in this docstring, because the
+    report is regenerated and a number copied here would drift out of step
+    with it silently.
+    """
     assert 0.8 <= model.mmr_lambda < 1.0
 
 
