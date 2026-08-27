@@ -10,7 +10,7 @@ what it satisfies, and it cannot invent a claim.
 
 | | |
 | --- | --- |
-| **Live app** | Not yet deployed — see [Deployment](#deployment) |
+| **Live app** | **https://orboai.streamlit.app/** |
 | **Repo** | https://github.com/gkbishnoi07/Orbo.AI |
 | **Tests** | 186, all passing |
 | **Latency** | ~16 ms typical, ~31 ms p95 end-to-end (see [Latency](#latency)) |
@@ -528,14 +528,17 @@ canonical names only, so swapping the dataset touches exactly one file.
 
 ## Deployment
 
-**Not yet deployed.** The repository is verified deployment-ready — a fresh
-clone plus `pip install -r requirements.txt` resolves 44 packages with no
-`torch` and serves recommendations in ~6 s cold start — but no public URL exists
-yet, and the repository is still private.
+**Live at https://orboai.streamlit.app/** — no setup, no account needed.
 
-Target is Streamlit Community Cloud, which redeploys on every push to `main`.
-Requires Python **3.10+** (no floor is declared in the repo; select it in the
-Streamlit Cloud UI).
+Hosted on Streamlit Community Cloud, which redeploys on every push to `main`.
+The app needs nothing but this repository: `requirements.txt` resolves to 44
+packages with no `torch`, and it reads only the committed `artifacts/`. Cold
+start is a few seconds, almost entirely rebuilding the cohort similarity
+matrices, which are then cached for the life of the container.
+
+Requires Python **3.10+**. No floor is declared in the repo (no
+`.python-version` or `pyproject.toml`), so the version is selected in the
+Streamlit Cloud UI.
 
 It needs nothing but this repository: `requirements.txt` resolves to 41 packages
 with no `torch`, and the app reads only the committed `artifacts/`. Cold start is
