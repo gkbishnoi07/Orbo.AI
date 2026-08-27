@@ -173,7 +173,7 @@ def test_breakdown_reports_a_count_per_active_rule(irritant_flags, skin_type_fla
     )
     assert breakdown, "some rule must have fired on the fixture"
     assert all(isinstance(v, int) and v > 0 for v in breakdown.values())
-    assert "contain added fragrance" in breakdown
+    assert "they contain added fragrance" in breakdown
 
     quiet = rules.exclusion_breakdown(
         irritant_flags, skin_type_flags, skin_type=None, concerns=()

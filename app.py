@@ -217,7 +217,16 @@ THEME_SYNC = """
 
   function apply() { hideBrowserFeatures(); syncAppearance(); }
   apply();
-  new MutationObserver(apply).observe(doc.body, { childList: true, subtree: true });
+  // Attributes and style, not just childList: switching theme in Streamlit's
+  // menu repaints via style changes and inserts no nodes, so a childList-only
+  // observer never re-measured and the palette stayed latched on whatever the
+  // first paint happened to be — light text left on a white page.
+  new MutationObserver(apply).observe(doc.documentElement, {
+    childList: true, subtree: true, attributes: true,
+    attributeFilter: ["style", "class", "data-theme"],
+  });
+  // Backstop: the repaint can land in a frame the observer does not see.
+  setInterval(apply, 400);
 })();
 </script>
 """
@@ -243,17 +252,34 @@ CSS = """
      `--muted` and `--faint` are darker than a typical grey ramp because at these
      sizes anything lighter fails contrast. */
   :root, :root[data-appearance="light"] {
-    --ink: #1F1B1E;      --muted: #5C5257;   --faint: #857A80;
     --line: #DED3CB;     --surface: #FFFFFF; --panel: #F7F2EE;
     --accent: #A32E4E;   --accent-bg: #F7E8ED; --accent-line: #E4CBD4;
     --chip-bg: #F1E9E3;  --ok: #256B47;      --star: #A87F1E;
   }
   :root[data-appearance="dark"] {
-    --ink: #F3EDEF;      --muted: #BCB1B7;   --faint: #928890;
     --line: #3A323E;     --surface: #1E1A22; --panel: #221D26;
     --accent: #E68DA3;   --accent-bg: #34222B; --accent-line: #4D323D;
     --chip-bg: #272029;  --ok: #74C598;      --star: #DCBA5F;
   }
+
+  /* Text colour is INHERITED from Streamlit, never from a token of our own.
+     Streamlit always sets the body colour correctly for the active theme, so
+     inheriting makes the old failure impossible: if the appearance probe were
+     ever wrong or slow, the worst case is a slightly-off surface tint, never
+     unreadable text. Muted tones are opacity on the inherited colour, which
+     stays legible whichever way round the theme is. */
+  .stApp .pname, .stApp .fact b, .stApp .hero h1, .stApp .onboard h2,
+  .stApp .stepcol b, .stApp .mark b, .stApp .pmeta b { color: inherit; }
+
+  .stApp .hero p, .stApp .onboard p, .stApp .stepcol span, .stApp .pmeta,
+  .stApp .chip, .stApp .ev, .stApp .barlabel { color: inherit; opacity: .78; }
+
+  .stApp .marksub, .stApp .grouplabel, .stApp .fact span, .stApp .detail,
+  .stApp .meta, .stApp .plate .cat, .stApp .whyhead,
+  .stApp .pmeta u { color: inherit; opacity: .58; }
+
+  .stApp .meta b { opacity: 1; }
+  .stApp .ev.no { opacity: .55; }
 
   .block-container { padding-top: 2rem; padding-bottom: 4rem; max-width: 1380px; }
 
@@ -326,6 +352,10 @@ CSS = """
     display: flex; flex-direction: column;
   }
 
+  /* Every card is built from fixed-height parts, so a row is uniform without
+     relying on flex stretch reaching through Streamlit's wrapper divs — those
+     testids change between versions and the alignment quietly broke when they
+     did. Fixed parts align whether or not the stretch rules match. */
   .pface { display: flex; flex-direction: column; }
   .plate { margin: -1rem -1rem .7rem; height: 92px; flex: 0 0 92px;
            display: flex; flex-direction: column; align-items: center;
@@ -345,22 +375,34 @@ CSS = """
 
   .brand { font-size: .63rem; font-weight: 700; text-transform: uppercase;
            letter-spacing: .1em; color: var(--accent); white-space: nowrap;
-           overflow: hidden; text-overflow: ellipsis; }
+           overflow: hidden; text-overflow: ellipsis; height: 1.15em;
+           line-height: 1.15em; }
   .pname { font-size: .85rem; line-height: 1.3; color: var(--ink);
            font-weight: 500; margin: .15rem 0 .35rem; height: 2.6em;
            display: -webkit-box; -webkit-line-clamp: 2;
            -webkit-box-orient: vertical; overflow: hidden; }
-  .pmeta { font-size: .76rem; color: var(--muted); white-space: nowrap;
-           font-variant-numeric: tabular-nums; margin-bottom: .4rem;
-           overflow: hidden; text-overflow: ellipsis; }
+  .pmeta { font-size: .76rem; white-space: nowrap; height: 1.5em;
+           line-height: 1.5em; font-variant-numeric: tabular-nums;
+           margin-bottom: .4rem; overflow: hidden; text-overflow: ellipsis; }
   .pmeta b { font-size: .95rem; font-weight: 700; color: var(--ink); }
   .pmeta i { font-style: normal; color: var(--star); }
   .pmeta u { text-decoration: none; color: var(--faint); }
 
-  .evbox { min-height: 3.05em; }
-  .ev { font-size: .74rem; line-height: 1.4; margin: .09rem 0;
-        display: flex; gap: .3rem; align-items: flex-start; }
-  .ev .g { flex: 0 0 auto; line-height: 1.4; }
+  /* Exactly two rows, each clamped to one line. A wrapped third line was what
+     made neighbouring cards different heights; the full text is one click away
+     in "Why this?", so truncating here costs nothing. */
+  .evbox { height: 2.9em; overflow: hidden; }
+  .ev { font-size: .74rem; line-height: 1.45; margin: 0;
+        display: flex; gap: .3rem; align-items: baseline;
+        white-space: nowrap; overflow: hidden; }
+  .ev .g { flex: 0 0 auto; }
+  .ev > span:last-child { overflow: hidden; text-overflow: ellipsis;
+                          white-space: nowrap; min-width: 0; }
+  /* The expander must sit at the same height on every card in the row. */
+  div[data-testid="stVerticalBlockBorderWrapper"]:has(.pface) details,
+  div[data-testid="stVerticalBlockBorderWrapper"]:has(.pface) [data-testid="stExpander"] {
+    margin-top: auto;
+  }
   .yes { color: var(--muted); } .yes .g { color: var(--ok); }
   .no  { color: var(--faint); } .no  .g { color: var(--faint); }
   .detail { color: var(--faint); font-size: .69rem; }
@@ -927,13 +969,18 @@ def main() -> None:
     if removed:
         total = sum(removed.values())
         with st.expander(f"Why {total:,} products were excluded from your results"):
-            st.caption(
-                "Your profile rules these out outright, so they were removed "
-                "before anything was ranked. No score can bring them back — that "
-                "is the point of a rule rather than a preference."
-            )
+            # One sentence per reason, each naming its own count. The previous
+            # copy explained the filter-versus-ranking distinction in engineering
+            # terms ("no score can bring them back — that is the point of a rule
+            # rather than a preference") and stranded the number in a separate
+            # line below it. Say what happened, then why it is removal rather
+            # than demotion, in the reader's terms.
             for label, count in sorted(removed.items(), key=lambda kv: -kv[1]):
-                st.markdown(f"**{count:,} products** {label}.")
+                st.markdown(f"We removed **{count:,} products** because {label}.")
+            st.caption(
+                "We don't just rank these lower — if a product isn't made for "
+                "your skin, it shouldn't show up at all."
+            )
 
     if not results:
         st.warning(
