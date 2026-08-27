@@ -243,9 +243,27 @@ Three properties of the raw data shaped most of the code:
    Kept anyway, because moving it after seeing results would be choosing the
    threshold that flatters the model.
 
-Raw CSVs are **not redistributed** — `data/raw/` is gitignored and
-`scripts/00_download.py` reproduces them. What *is* committed is 34 MB of derived
-artifacts, so the app and the evaluation run without a Kaggle account.
+### Where the data lives in this repo
+
+**If you are looking for a dataset file, it is `artifacts/` — not `data/`.** That
+directory is deliberately empty apart from a `.gitkeep`.
+
+| Path | Committed? | What it is |
+| --- | --- | --- |
+| `data/raw/` | **No** — gitignored | The five original Kaggle CSVs, ~530 MB. Not redistributed: too large for git and covered by Kaggle's licence terms. `scripts/00_download.py` fetches them. |
+| `artifacts/` | **Yes** — 34 MB, 7 files | The derived data the app actually reads: the product table, positive interactions, per-cohort and per-tone counts, and the product vectors. **This is the shipped dataset.** |
+
+That split is why a clone runs with no Kaggle account: the app never opens a CSV,
+it reads `artifacts/products.parquet` and friends. It is also why the repo is
+34 MB rather than 560 MB.
+
+To inspect the shipped data directly:
+
+```python
+import pandas as pd
+pd.read_parquet("artifacts/products.parquet").head()      # 8,494 products
+pd.read_parquet("artifacts/interactions.parquet").head()  # 893,393 ratings
+```
 
 ## Technologies
 
@@ -330,12 +348,22 @@ Two case sets, reported separately because they measure different products:
 - **Cold start** — users with exactly one positive, hidden. Tests the path a new
   visitor actually takes. Averaging it into the headline would hide it either way.
 
-Metrics: precision@10, recall@10, NDCG@10, MAP@10, catalogue coverage, intra-list
-diversity, novelty, p50/p95 latency, empty-result rate. Coverage and diversity
-are reported *beside* accuracy because a model that serves every user the same
-ten bestsellers can score well on accuracy alone.
+Metrics: precision@10, recall@10, NDCG@10, MAP@10, recommendation coverage,
+intra-list diversity, novelty, p50/p95 latency, empty-result rate.
 
-Reproduce: `python scripts/04_evaluate.py` and `python scripts/05_sweep.py`.
+**"Coverage" here means one specific thing** and it is easy to confuse with
+another: it is the share of the catalogue a model actually *returned* across the
+whole evaluation run. It is not the share a layer is *able* to score. The content
+layer, for instance, is applicable to the 72% of the catalogue that has no
+interactions — that is reach — while returning 16.6% of the catalogue across
+1,000 evaluation cases. Both numbers are about the content model and neither
+contradicts the other.
+
+Recommendation coverage and diversity are reported *beside* accuracy because a
+model that serves every user the same ten bestsellers can score well on accuracy
+alone.
+
+Reproduce: `.venv/bin/python scripts/04_evaluate.py` and `.venv/bin/python scripts/05_sweep.py`.
 
 ## Latency
 
@@ -361,7 +389,7 @@ two it was. It was model inference at k=10, excluding explanations.
 machine-readable form in [`reports/evaluation.json`](reports/evaluation.json),
 which is what the app's Model performance tab reads.
 
-| Model | NDCG@10 warm | NDCG@10 cold | Coverage | p95 latency |
+| Model | NDCG@10 warm | NDCG@10 cold | Recommendation coverage | p95 latency |
 | --- | --- | --- | --- | --- |
 | random | 0.0004 | 0.0000 | 68.8% | 22 ms |
 | popularity | 0.0307 | **0.0693** | 0.2% | 22 ms |
@@ -467,20 +495,28 @@ See the link at the top. No setup required.
 
 ### Run locally
 
+Requires **Python 3.10 or newer**. On Windows use `.venv\Scripts\` in place of
+`.venv/bin/`.
+
 ```bash
-python -m venv .venv
+git clone https://github.com/gkbishnoi07/Orbo.AI.git
+cd Orbo.AI
+python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/streamlit run app.py
 ```
 
-That is all — the 34 MB of precomputed artifacts is committed, so no Kaggle
-account and no dataset download is needed.
+Then open http://localhost:8501.
+
+That is all — the 34 MB of precomputed artifacts is committed, so **no Kaggle
+account and no dataset download is needed**. Expect a few seconds on first load
+while the cohort similarity matrices are built; they are cached afterwards.
 
 ### Run the tests
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q        # 186 tests
+.venv/bin/python -m pytest -q        # 187 tests
 ```
 
 ### Reproduce everything from the raw data
@@ -488,14 +524,14 @@ account and no dataset download is needed.
 Needs Kaggle credentials at `~/.kaggle/kaggle.json`.
 
 ```bash
-pip install -r requirements-dev.txt
-python scripts/00_download.py            # ~150 MB zip -> data/raw/
-python scripts/01_inspect.py data/raw    # audit; decides the CF design
-python scripts/02_embed.py               # TF-IDF + MiniLM vectors
-python scripts/03_build_artifacts.py     # the committed runtime files
-python scripts/04_evaluate.py            # reports/evaluation.md
-python scripts/05_sweep.py               # reports/weight_sweep.md
-python scripts/06_test_cases.py          # reports/test_cases.md
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python scripts/00_download.py            # ~150 MB zip -> data/raw/
+.venv/bin/python scripts/01_inspect.py data/raw    # audit; decides the CF design
+.venv/bin/python scripts/02_embed.py               # TF-IDF + MiniLM vectors
+.venv/bin/python scripts/03_build_artifacts.py     # the committed runtime files
+.venv/bin/python scripts/04_evaluate.py            # reports/evaluation.md
+.venv/bin/python scripts/05_sweep.py               # reports/weight_sweep.md
+.venv/bin/python scripts/06_test_cases.py          # reports/test_cases.md
 ```
 
 ## Repository layout

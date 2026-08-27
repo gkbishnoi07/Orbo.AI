@@ -817,8 +817,12 @@ override. Then three scoring layers, min-max scaled and blended, then MMR:
 
 1. **Content** — cosine similarity over precomputed TF-IDF vectors (256 dims,
    SVD-reduced) of the product text blob: brand, name, categories, highlights and
-   ingredients. Plus exact concern and skin-type tag matching. Covers the
-   **{1 - facts.reviewed_share:.0%}** of the catalogue with no interactions.
+   ingredients. Plus exact concern and skin-type tag matching. **Applicable to
+   the {1 - facts.reviewed_share:.0%} of the catalogue that has no interactions**
+   — it can rank an unreviewed product at all, which the other layers cannot.
+   That is reach, not output: the share of the catalogue a layer is *able* to
+   score. How much of it any model actually returns across an evaluation run is a
+   separate figure, in the Model performance tab.
 2. **Cohort collaborative** — item-item cosine similarity with co-occurrence
    shrinkage, rebuilt per skin-type cohort. Your cohort holds
    **{service.cohort_size(query.skin_type):,}** interactions.
@@ -863,7 +867,12 @@ as unsuitable would silently delete seven eighths of the catalogue.
                             "Approach": info.label,
                             "Returning user": f"{warm.get(f'ndcg@{k}', float('nan')):.4f}",
                             "New user": f"{cold.get(f'ndcg@{k}', float('nan')):.4f}",
-                            "Catalogue coverage": f"{warm.get('coverage', 0):.1%}",
+                            # Named explicitly: this is the share of the
+                            # catalogue the model actually *returned* across the
+                            # evaluation run — not the share it is able to score.
+                            # The Technical detail tab quotes the latter, and the
+                            # two sat close enough to read as a contradiction.
+                            "Recommendation coverage in evaluation": f"{warm.get('coverage', 0):.1%}",
                         }
                     )
                 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -897,8 +906,8 @@ as unsuitable would silently delete seven eighths of the catalogue.
 - For a brand-new user the blend scores {ndcg('hybrid-tfidf','cold'):.4f} against
   {ndcg('popularity','cold'):.4f} for plain popularity. Cold start is genuinely
   hard and we do not claim otherwise.
-- *Random* has the highest catalogue coverage, which is why coverage is never
-  read on its own.
+- *Random* returns the widest spread of products of any model here, which is
+  why recommendation coverage is never read on its own.
 - Latency in the recorded run is **model inference only**. It times
   `Recommender.recommend()` and excludes explanation generation and all
   Streamlit rendering, so it is not end-to-end user latency.
