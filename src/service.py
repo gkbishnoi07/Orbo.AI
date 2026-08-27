@@ -12,6 +12,7 @@ the life of the container.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,11 +25,15 @@ from .explain import Explainer
 from .hybrid import CFOnlyRecommender, ContentOnlyRecommender, HybridRecommender
 from .recommender import PopularityRecommender, RandomRecommender, Recommender
 from .schema import CONCERNS, ProductCols, Query, ReviewCols, Scored
+from .tone import ToneAffinity
 
 DEFAULT_METHOD = "tfidf"
-"""TF-IDF, not MiniLM. Measured: 2.1x the NDCG for content scoring on this
-catalogue, because the product text is highlight tokens and INCI ingredient
-lists rather than prose. See reports/evaluation.md."""
+"""TF-IDF, not MiniLM.
+
+Measured, not assumed: content-tfidf beat content-minilm on warm-start NDCG@10
+in the recorded run, because the product text is highlight tokens and INCI
+ingredient lists rather than prose. The live figures are in
+reports/evaluation.json; no ratio is repeated here, so nothing can go stale."""
 
 
 @dataclass(frozen=True)
@@ -46,9 +51,6 @@ class StrategyInfo:
     label: str
     blurb: str
     technical: str
-    warm_ndcg: float | None = None
-    cold_ndcg: float | None = None
-    coverage: float | None = None
 
 
 STRATEGIES: tuple[StrategyInfo, ...] = (
@@ -60,9 +62,6 @@ STRATEGIES: tuple[StrategyInfo, ...] = (
         technical="Weighted blend of cohort CF, TF-IDF content similarity and a "
         "log-damped popularity prior, reranked with MMR for intra-list diversity. "
         "Switches to a popularity-led blend when there is no history.",
-        warm_ndcg=0.4115,
-        cold_ndcg=0.0651,
-        coverage=0.141,
     ),
     StrategyInfo(
         key="cohort-cf",
@@ -71,9 +70,6 @@ STRATEGIES: tuple[StrategyInfo, ...] = (
         "profile like yours who liked what you like.",
         technical="Item-item cosine similarity rebuilt per skin-type cohort, with "
         "co-occurrence shrinkage. Blind to the 72% of the catalogue with no reviews.",
-        warm_ndcg=0.4135,
-        cold_ndcg=0.0693,
-        coverage=0.155,
     ),
     StrategyInfo(
         key="content",
@@ -83,9 +79,6 @@ STRATEGIES: tuple[StrategyInfo, ...] = (
         technical="Cosine similarity over precomputed TF-IDF vectors of the product "
         "text blob, plus exact concern and skin-type tag matching. The only layer "
         "that can rank a product with no reviews.",
-        warm_ndcg=0.2404,
-        cold_ndcg=0.0019,
-        coverage=0.166,
     ),
     StrategyInfo(
         key="popularity",
@@ -94,9 +87,6 @@ STRATEGIES: tuple[StrategyInfo, ...] = (
         "everybody, with no personalisation at all.",
         technical="Log-damped count of ratings at 4+. A plain bestselling page "
         "gives this away for free, so it is the bar personalisation must clear.",
-        warm_ndcg=0.0307,
-        cold_ndcg=0.0693,
-        coverage=0.002,
     ),
     StrategyInfo(
         key="random",
@@ -104,13 +94,39 @@ STRATEGIES: tuple[StrategyInfo, ...] = (
         blurb="Picks at random from whatever passes your filters. Included so you "
         "can see what no useful signal looks like.",
         technical="The floor. Any approach that cannot beat this is broken.",
-        warm_ndcg=0.0004,
-        cold_ndcg=0.0000,
-        coverage=0.688,
     ),
 )
 
 STRATEGIES_BY_KEY = {s.key: s for s in STRATEGIES}
+
+EVAL_ROW_FOR_STRATEGY: dict[str, str] = {
+    "hybrid": "hybrid-tfidf",
+    "cohort-cf": "cf-only",
+    "content": "content-tfidf",
+    "popularity": "popularity",
+    "random": "random",
+}
+"""Which row of reports/evaluation.json corresponds to each UI strategy.
+
+The UI used to carry its own copy of these numbers as literals. They were
+correct when typed and would have silently gone stale on the next re-tune, while
+still being rendered next to live-computed catalogue facts — indistinguishable
+to a reader from something measured."""
+
+
+def load_benchmark(root: Path = Path("reports")) -> dict | None:
+    """The recorded evaluation run, or None when it has not been generated.
+
+    Never computed at request time: a full leave-one-out sweep is minutes of
+    work, so the UI reports the recorded run and says which commit produced it.
+    """
+    path = Path(root) / "evaluation.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
 
 LAYER_LABELS: dict[str, str] = {
     "content": "Product match",
@@ -119,6 +135,7 @@ LAYER_LABELS: dict[str, str] = {
     "concern": "Addresses your concerns",
     "skin": "Suits your skin type",
     "embedding": "Description similarity",
+    "tone": "Rated well by your skin tone",
 }
 """Shopper-facing names for the score components. The internal keys stay as they
 are — renaming them would ripple through the evaluation reports."""
@@ -152,6 +169,7 @@ class RecommendationService:
         cohort_stats: pd.DataFrame,
         embeddings: np.ndarray,
         embedding_ids: list[str],
+        tone_stats: pd.DataFrame | None = None,
     ) -> None:
         self.products = products
         self._indexed = products.set_index(ProductCols.ID, drop=False)
@@ -159,10 +177,12 @@ class RecommendationService:
         # The hybrid is fitted first and its sub-models are then reused as the
         # standalone strategies. Constructing separate instances would rebuild
         # the same cohort similarity matrices a second time for no benefit.
+        self.tone = ToneAffinity(tone_stats) if tone_stats is not None else None
         hybrid = HybridRecommender(
             content=ContentOnlyRecommender(embeddings, embedding_ids),
             collaborative=CFOnlyRecommender(),
             popularity=PopularityRecommender(),
+            tone=self.tone,
         )
         hybrid.fit(products, interactions)
 
@@ -189,7 +209,8 @@ class RecommendationService:
         interactions = artifacts.load_interactions(root)
         cohort_stats = artifacts.load_cohort_stats(root)
         matrix, ids = artifacts.load_embeddings(method, root)
-        return cls(products, interactions, cohort_stats, matrix, ids)
+        tone_stats = artifacts.load_tone_stats(root)
+        return cls(products, interactions, cohort_stats, matrix, ids, tone_stats)
 
     def _compute_facts(self, interactions: pd.DataFrame) -> CatalogueFacts:
         price = pd.to_numeric(self.products[ProductCols.PRICE], errors="coerce")

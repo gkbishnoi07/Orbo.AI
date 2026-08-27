@@ -22,9 +22,15 @@ artifacts/*
 !artifacts/products.parquet
 !artifacts/interactions.parquet
 !artifacts/cohort_stats.parquet
+!artifacts/tone_stats.parquet
 !artifacts/embedding_ids.json
 !artifacts/embeddings_tfidf.npy
 !artifacts/embeddings_minilm.npy
 
 .DS_Store
 *:Zone.Identifier
+
+# Working notes for the coding agent, not project documentation. The engineering
+# reasoning that matters is in README.md; this file also carried a deadline and a
+# stale status block.
+CLAUDE.md

@@ -10,10 +10,10 @@ what it satisfies, and it cannot invent a claim.
 
 | | |
 | --- | --- |
-| **Live app** | _see Deployment below_ |
+| **Live app** | Not yet deployed — see [Deployment](#deployment) |
 | **Repo** | https://github.com/gkbishnoi07/Orbo.AI |
-| **Tests** | 178, all passing |
-| **Latency** | 20 ms typical, 26 ms p95 |
+| **Tests** | 186, all passing |
+| **Latency** | ~16 ms typical, ~31 ms p95 end-to-end (see [Latency](#latency)) |
 
 ---
 
@@ -75,7 +75,9 @@ Four layers, in order. The first is non-negotiable; the rest are scores.
    product nobody has reviewed, which is 72% of the catalogue.
 3. **Cohort collaborative filtering.** Item-item similarity rebuilt per
    skin-type cohort. Captures what product copy never says.
-4. **Blend, then diversify.** Weighted combination, then MMR reranking so ten
+4. **Skin-tone affinity.** A small, signed nudge toward products that a tone
+   band rates more highly than the catalogue average — never a filter.
+5. **Blend, then diversify.** Weighted combination, then MMR reranking so ten
    near-identical serums do not fill the page.
 
 Then an **explanation layer** turns each result into evidence lines grouped as
@@ -173,7 +175,28 @@ Weights differ by regime, because cold start is a different problem:
 | New user | 0.10 | 0.30 | 0.60 |
 
 Then greedy **MMR** at λ=0.85, chosen from the sweep because it cost 0.08% NDCG
-for 7.9% more intra-list diversity.
+for 7.9% more intra-list diversity. Worth stating plainly: on this catalogue a
+naive one-product-per-brand cap reaches the same measured intra-list diversity
+(0.8372). MMR is kept because it generalises to similarity the brand field does
+not capture, not because the measurement favours it.
+
+### Skin-tone affinity — `src/tone.py`
+
+For a product and a tone band, the signal is the band's positive rate minus the
+product's overall positive rate, shrunk toward that overall rate by an
+empirical-Bayes prior of 20 reviews (the median product-by-tone cohort size).
+
+Two properties keep it safe to add to an already-swept blend. It is **centred on
+zero**, so a query without a tone — or a product with no tone history —
+contributes exactly nothing and the ranking is bit-identical to the
+three-layer version. And it is **added on top of** the existing weights rather
+than folded into them, so the swept 0.15/0.80/0.05 blend is untouched.
+
+It is a nudge, not a filter: nothing is excluded for lacking tone data, which
+would penalise the least-represented bands hardest. In practice it moves the
+ranking for the `deep`, `medium` and `tan` bands and barely at all for `fair`
+and `light` — those two dominate the data, so their rate *is* close to the
+pooled average that everything is shrunk toward.
 
 ### Explanations — `src/explain.py`
 
@@ -314,10 +337,29 @@ ten bestsellers can score well on accuracy alone.
 
 Reproduce: `python scripts/04_evaluate.py` and `python scripts/05_sweep.py`.
 
+## Latency
+
+Two different numbers get quoted for systems like this and they are not
+interchangeable. Both are measured, neither is typed into this file:
+
+| What | Where measured | p50 | p95 |
+| --- | --- | --- | --- |
+| **Model inference** — `Recommender.recommend()` alone | `src/evaluate.py`, reported in `reports/evaluation.json` | see artifact | see artifact |
+| **End-to-end recommendation** — inference + explanation generation, k=20 | measured live, shown in the UI's result strip | ~16 ms | ~31 ms |
+
+Neither includes Streamlit rendering or network time, so neither is what a
+browser tab experiences. Cold start is ~5 s, almost entirely rebuilding the
+cohort similarity matrices, cached thereafter for the life of the container.
+
+Earlier revisions of this README quoted "26 ms p95" without saying which of the
+two it was. It was model inference at k=10, excluding explanations.
+
 ## Results
 
 1,000 warm and 1,000 cold cases, k=10. Full tables in
-[`reports/evaluation.md`](reports/evaluation.md).
+[`reports/evaluation.md`](reports/evaluation.md); the same numbers in
+machine-readable form in [`reports/evaluation.json`](reports/evaluation.json),
+which is what the app's Model performance tab reads.
 
 | Model | NDCG@10 warm | NDCG@10 cold | Coverage | p95 latency |
 | --- | --- | --- | --- | --- |
@@ -368,8 +410,12 @@ pool, and skin tone being collected but not scored.
 2. **The hybrid loses to CF alone on offline accuracy**, and the offline metric
    structurally cannot see what the content layer adds.
 3. **CF is blind to 72% of the catalogue.** Only 2,343 products have any review.
-4. **Skin tone is collected but not scored.** Shade matching needs product-level
-   shade data this dataset lacks.
+4. **Skin tone is a weak signal, and deliberately so.** It now affects ranking
+   (`src/tone.py`) but only as a shrunk nudge, and it visibly moves results only
+   for the `deep`, `medium` and `tan` bands — `fair` and `light` dominate the
+   data, so their rate is already the average everything is shrunk toward. True
+   *shade* matching remains impossible: this dataset has no product-level shade
+   data.
 5. **The 4★ threshold is generous** — 82% of reviews qualify.
 6. **Self-reported, unverified profile fields.**
 7. **No feedback loop.** Everything is offline; no clicks, so nothing learns.
@@ -434,7 +480,7 @@ account and no dataset download is needed.
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q        # 178 tests
+.venv/bin/python -m pytest -q        # 186 tests
 ```
 
 ### Reproduce everything from the raw data
@@ -469,8 +515,9 @@ src/metrics.py              pure metric functions, no dataset dependency
 src/evaluate.py             leave-one-out harness, compare()
 src/artifacts.py            loads the committed runtime files
 src/service.py              composition root shared by the UI and the test cases
+src/tone.py                 skin-tone affinity (shrunk, signed ranking nudge)
 scripts/00..06              download, audit, embed, build, evaluate, sweep, cases
-tests/                      178 tests
+tests/                      186 tests
 reports/                    audit, evaluation, sweep, test cases
 artifacts/                  34 MB of committed runtime files
 docs/comparison.md          bonus: Sephora / Nykaa comparison
@@ -481,7 +528,14 @@ canonical names only, so swapping the dataset touches exactly one file.
 
 ## Deployment
 
-Hosted on Streamlit Community Cloud, which redeploys on every push to `main`.
+**Not yet deployed.** The repository is verified deployment-ready — a fresh
+clone plus `pip install -r requirements.txt` resolves 44 packages with no
+`torch` and serves recommendations in ~6 s cold start — but no public URL exists
+yet, and the repository is still private.
+
+Target is Streamlit Community Cloud, which redeploys on every push to `main`.
+Requires Python **3.10+** (no floor is declared in the repo; select it in the
+Streamlit Cloud UI).
 
 It needs nothing but this repository: `requirements.txt` resolves to 41 packages
 with no `torch`, and the app reads only the committed `artifacts/`. Cold start is

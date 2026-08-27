@@ -168,3 +168,163 @@ def test_weights_sum_to_one_in_both_regimes(model):
 def test_mmr_default_trades_almost_no_relevance(model):
     """0.85 was chosen because it cost 0.08% NDCG for +7.9% diversity."""
     assert 0.8 <= model.mmr_lambda < 1.0
+
+
+# --------------------------------------------------------------------------
+# Skin tone: a real ranking signal, not a decorative control
+# --------------------------------------------------------------------------
+
+
+def tone_stats_frame():
+    """Two products a band disagrees about, one it has no opinion on.
+
+    P0001: the deep band likes it far more than everyone else.
+    P0002: the deep band likes it far less.
+    P0003: no tone rows at all -> must contribute exactly nothing.
+    """
+    import pandas as pd
+
+    rows = []
+    for pid, deep_pos, other_pos in [("P0001", 195, 100), ("P0002", 5, 100)]:
+        rows.append(
+            {"product_id": pid, "skin_tone": "deep", "n_reviews": 200,
+             "n_positive": deep_pos}
+        )
+        for band in ("fair", "light", "medium", "tan"):
+            rows.append(
+                {"product_id": pid, "skin_tone": band, "n_reviews": 200,
+                 "n_positive": other_pos}
+            )
+    return pd.DataFrame(rows)
+
+
+def tone_model(synthetic_embeddings, synthetic_products, synthetic_reviews, **kwargs):
+    from src.tone import ToneAffinity
+
+    return build(
+        synthetic_embeddings, synthetic_products, synthetic_reviews,
+        tone=ToneAffinity(tone_stats_frame()), **kwargs,
+    )
+
+
+def test_tone_affinity_is_signed_and_centred_on_zero():
+    """The property that makes it safe to add to an existing blend."""
+    from src.tone import ToneAffinity
+    import pandas as pd
+
+    affinity = ToneAffinity(tone_stats_frame())
+    index = pd.Index(["P0001", "P0002", "P0003"])
+    deep = affinity.scores("deep", index)
+
+    assert deep["P0001"] > 0, "a band that likes a product should score it up"
+    assert deep["P0002"] < 0, "a band that dislikes it should score it down"
+    assert deep["P0003"] == 0.0, "no tone data must mean no opinion, not a penalty"
+
+
+def test_an_unknown_or_absent_band_contributes_nothing():
+    from src.tone import ToneAffinity
+    import pandas as pd
+
+    affinity = ToneAffinity(tone_stats_frame())
+    index = pd.Index(["P0001", "P0002"])
+    assert (affinity.scores(None, index) == 0).all()
+    assert (affinity.scores("chartreuse", index) == 0).all()
+
+
+def test_shrinkage_damps_a_thin_cohort_far_more_than_a_thick_one():
+    """The deep and tan bands are an order of magnitude smaller than light, so an
+    unshrunk rate from a handful of reviewers would swamp a well-evidenced one."""
+    from src.tone import ToneAffinity
+    import pandas as pd
+
+    def frame(n_deep):
+        rows = [{"product_id": "P0001", "skin_tone": "deep",
+                 "n_reviews": n_deep, "n_positive": n_deep}]
+        rows += [{"product_id": "P0001", "skin_tone": b,
+                  "n_reviews": 400, "n_positive": 200} for b in ("fair", "light")]
+        return pd.DataFrame(rows)
+
+    index = pd.Index(["P0001"])
+    thin = ToneAffinity(frame(4)).scores("deep", index)["P0001"]
+    thick = ToneAffinity(frame(400)).scores("deep", index)["P0001"]
+    assert 0 < thin < thick, f"thin={thin} should be damped below thick={thick}"
+
+
+def test_changing_skin_tone_changes_the_ranking(
+    synthetic_embeddings, synthetic_products, synthetic_reviews
+):
+    """The regression this whole change exists for.
+
+    Skin tone was collected by the UI, banded in the data, displayed as a chip —
+    and used by no scoring layer at all, so switching it produced a byte-identical
+    list. Asserted over the full ranking rather than a top-k slice: the tone term
+    is deliberately a small nudge, so on a catalogue where nothing else differs it
+    moves products by tens of places, not into the first page.
+    """
+    model = tone_model(synthetic_embeddings, synthetic_products, synthetic_reviews)
+
+    def ranking(tone: str) -> list[str]:
+        return list(
+            model._score(Query(skin_type="dry", skin_tone=tone))
+            .sort_values(ascending=False)
+            .index
+        )
+
+    deep, fair = ranking("deep"), ranking("fair")
+    assert deep != fair, "skin tone is still cosmetic"
+    assert deep.index("P0001") < fair.index("P0001"), (
+        "the band that rates P0001 highly should rank it higher: "
+        f"deep={deep.index('P0001')} fair={fair.index('P0001')}"
+    )
+    assert deep.index("P0002") > fair.index("P0002"), (
+        "the band that rates P0002 poorly should rank it lower"
+    )
+
+
+def test_tone_moves_a_product_by_a_meaningful_number_of_places(
+    synthetic_embeddings, synthetic_products, synthetic_reviews
+):
+    """Small does not mean invisible. If the nudge cannot shift a strongly
+    disagreed-about product at all, the weight is effectively zero."""
+    model = tone_model(synthetic_embeddings, synthetic_products, synthetic_reviews)
+
+    def rank_of(product: str, tone: str) -> int:
+        order = (
+            model._score(Query(skin_type="dry", skin_tone=tone))
+            .sort_values(ascending=False)
+        )
+        return list(order.index).index(product)
+
+    moved = rank_of("P0001", "fair") - rank_of("P0001", "deep")
+    assert moved >= 10, f"tone shifted P0001 by only {moved} places"
+
+
+def test_a_query_without_a_tone_is_unchanged_by_the_tone_layer(
+    synthetic_embeddings, synthetic_products, synthetic_reviews
+):
+    """Guarantees the addition did not perturb the existing blend."""
+    with_tone = tone_model(synthetic_embeddings, synthetic_products, synthetic_reviews)
+    without = build(synthetic_embeddings, synthetic_products, synthetic_reviews)
+    query = Query(skin_type="dry", concerns=("dryness",))
+    assert [r.product_id for r in with_tone.recommend(query, k=20)] == [
+        r.product_id for r in without.recommend(query, k=20)
+    ]
+
+
+def test_tone_never_removes_a_product_from_the_eligible_pool(
+    synthetic_embeddings, synthetic_products, synthetic_reviews
+):
+    """A nudge, not a filter. Excluding products a band has not reviewed would
+    hit the least-represented bands hardest."""
+    model = tone_model(synthetic_embeddings, synthetic_products, synthetic_reviews)
+    plain = len(model._apply_filters(Query(skin_type="dry")))
+    toned = len(model._apply_filters(Query(skin_type="dry", skin_tone="deep")))
+    assert plain == toned
+
+
+def test_the_tone_term_is_exposed_as_a_score_component(
+    synthetic_embeddings, synthetic_products, synthetic_reviews
+):
+    model = tone_model(synthetic_embeddings, synthetic_products, synthetic_reviews)
+    results = model.recommend(Query(skin_type="dry", skin_tone="deep"), k=5)
+    assert results and all("tone" in r.components for r in results)

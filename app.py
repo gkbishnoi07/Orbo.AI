@@ -40,10 +40,12 @@ import streamlit.components.v1 as components
 
 from src.schema import SKIN_TONE_BANDS, SKIN_TYPES, ProductCols, Query
 from src.service import (
+    EVAL_ROW_FOR_STRATEGY,
     LAYER_LABELS,
     STRATEGIES,
     STRATEGIES_BY_KEY,
     RecommendationService,
+    load_benchmark,
 )
 
 st.set_page_config(
@@ -715,7 +717,12 @@ which foundation oxidises, which moisturiser pills under sunscreen.
 
 **Overall popularity.** Breaks ties toward things lots of people rate well.
 
-The three are weighed together and the final list is diversified slightly, so you
+**Your skin tone.** A small nudge toward products that people in your tone band
+rate more highly than everyone else does. Deliberately small, and it only moves
+a product when that band's opinion actually differs from the average — nothing is
+ever excluded for lacking tone data.
+
+The four are weighed together and the final list is diversified slightly, so you
 do not get ten near-identical serums.
 
 **The reasons are real.** Every line under "Why this?" is read from the data, not
@@ -744,10 +751,17 @@ override. Then three scoring layers, min-max scaled and blended, then MMR:
    **{service.cohort_size(query.skin_type):,}** interactions.
 3. **Popularity prior** — log-damped count of ratings at 4+.
 
-TF-IDF is used rather than a sentence transformer because it measured **2.1×**
-better here: the product text is highlight tokens and INCI ingredient lists, not
-prose, so term overlap beats semantic similarity. Vectors are precomputed
-offline, so the deployed app never loads torch and p95 latency stays near 20ms.
+TF-IDF is used rather than a sentence transformer because it measured better
+here: the product text is highlight tokens and INCI ingredient lists, not prose,
+so term overlap beats semantic similarity. The exact ratio is in the Model
+performance tab, read from the recorded run rather than repeated here.
+
+Vectors are precomputed offline, so the deployed app never loads torch. Two
+different latencies get quoted for systems like this and they are not the same
+number: **model inference** (`Recommender.recommend()`, what the evaluation
+harness times) and **end-to-end recommendation** (inference plus explanation
+generation, before any Streamlit rendering). The strip above every result page
+reports the second one, measured live for that request.
 
 **Untagged is not unsuitable.** Only 12.4% of products carry a skin-type tag, so
 the rules fire on stated disagreement, never on a missing tag. Treating untagged
@@ -756,39 +770,70 @@ as unsuitable would silently delete seven eighths of the catalogue.
             )
 
         with performance_tab:
-            rows = [
-                {
-                    "Approach": info.label,
-                    "Returning user": f"{info.warm_ndcg:.4f}",
-                    "New user": f"{info.cold_ndcg:.4f}",
-                    "Catalogue coverage": f"{info.coverage:.1%}",
-                }
-                for info in STRATEGIES
-                if info.warm_ndcg is not None
-            ]
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-            st.caption(
-                "NDCG@10, leave-one-out on 1,000 held-out likes per column. Every "
-                "model is fitted on the same training split with the evaluated "
-                "interactions removed."
-            )
-            st.markdown(
-                """
+            benchmark = load_benchmark()
+            if benchmark is None:
+                st.warning(
+                    "No recorded evaluation found. Run "
+                    "`python scripts/04_evaluate.py` to generate "
+                    "`reports/evaluation.json`."
+                )
+            else:
+                k = benchmark.get("k", 10)
+                rows = []
+                for info in STRATEGIES:
+                    row = benchmark["models"].get(EVAL_ROW_FOR_STRATEGY[info.key])
+                    if not row:
+                        continue
+                    warm, cold = row["warm"], row["cold"] or {}
+                    rows.append(
+                        {
+                            "Approach": info.label,
+                            "Returning user": f"{warm.get(f'ndcg@{k}', float('nan')):.4f}",
+                            "New user": f"{cold.get(f'ndcg@{k}', float('nan')):.4f}",
+                            "Catalogue coverage": f"{warm.get('coverage', 0):.1%}",
+                        }
+                    )
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+                st.caption(
+                    f"**Recorded benchmark**, not measured live — NDCG@{k}, "
+                    f"leave-one-out on {benchmark.get('warm_cases', 0):,} warm and "
+                    f"{benchmark.get('cold_cases', 0):,} cold held-out likes, from "
+                    f"commit `{benchmark.get('commit', 'unknown')}` "
+                    f"(`{benchmark.get('embedding_method', '?')}` vectors). Every "
+                    "model is fitted on the same training split with the evaluated "
+                    "interactions removed. Regenerate with "
+                    "`python scripts/04_evaluate.py`."
+                )
+            if benchmark is not None:
+                k = benchmark.get("k", 10)
+                def ndcg(row_key: str, regime: str) -> float:
+                    row = benchmark["models"].get(row_key) or {}
+                    part = row.get(regime) or {}
+                    return float(part.get(f"ndcg@{k}", float("nan")))
+
+                unrated = facts.n_products - facts.n_reviewed_products
+                st.markdown(
+                    f"""
 **Read these honestly.**
 
-- *Similar shoppers* alone scores marginally better than the blend (0.4135 vs
-  0.4115). The blend is kept because held-out items always come from the ratings
-  table, so the 6,151 unrated products can never count as a hit and the
-  product-match layer's whole contribution is invisible to this metric.
-- For a brand-new user nothing beats plain popularity by much (0.0651 vs 0.0693).
-  Cold start is genuinely hard and we do not claim otherwise.
+- *Similar shoppers* alone scores {ndcg('cf-only','warm'):.4f} on a returning
+  user against the blend's {ndcg('hybrid-tfidf','warm'):.4f}. The blend is kept
+  because held-out items always come from the ratings table, so the
+  {unrated:,} unrated products can never count as a hit and the product-match
+  layer's whole contribution is invisible to this metric.
+- For a brand-new user the blend scores {ndcg('hybrid-tfidf','cold'):.4f} against
+  {ndcg('popularity','cold'):.4f} for plain popularity. Cold start is genuinely
+  hard and we do not claim otherwise.
 - *Random* has the highest catalogue coverage, which is why coverage is never
   read on its own.
+- Latency in the recorded run is **model inference only**. It times
+  `Recommender.recommend()` and excludes explanation generation and all
+  Streamlit rendering, so it is not end-to-end user latency.
 
 Full numbers in `reports/evaluation.md`; the blend sweep, including the weights
 that were rejected, in `reports/weight_sweep.md`.
 """
-            )
+                )
 
 
 def main() -> None:
@@ -876,7 +921,7 @@ def main() -> None:
     st.markdown(
         f'<div class="meta">Showing <b>{len(results)}</b> of '
         f"<b>{eligible:,}</b> matching products · {info.label} · "
-        f"{elapsed_ms:.0f} ms</div>",
+        f"{elapsed_ms:.0f} ms end-to-end</div>",
         unsafe_allow_html=True,
     )
     if removed:

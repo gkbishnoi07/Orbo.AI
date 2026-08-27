@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.data import load  # noqa: E402
 from src.explain import build_cohort_stats  # noqa: E402
+from src.tone import build_tone_stats  # noqa: E402
 from src.schema import POSITIVE_RATING, MIN_COHORT_FOR_CLAIM, ProductCols, ReviewCols  # noqa: E402
 
 ARTIFACTS = Path("artifacts")
@@ -54,6 +55,11 @@ def main() -> int:
     cohort_stats = build_cohort_stats(reviews)
     cohort_stats.to_parquet(ARTIFACTS / "cohort_stats.parquet", index=False)
 
+    # Per (product, tone band). Feeds the tone affinity nudge in the hybrid;
+    # kept separate from cohort_stats so neither artifact changes shape.
+    tone_stats = build_tone_stats(reviews)
+    tone_stats.to_parquet(ARTIFACTS / "tone_stats.parquet", index=False)
+
     usable = (cohort_stats["n_reviews"] >= MIN_COHORT_FOR_CLAIM).mean()
     print("written to artifacts/:")
     total = 0
@@ -68,6 +74,7 @@ def main() -> int:
     print(f"products:      {len(products):,}")
     print(f"interactions:  {len(interactions):,} positives")
     print(f"cohort rows:   {len(cohort_stats):,}")
+    print(f"tone rows:     {len(tone_stats):,}")
     print(
         f"  of which n >= {MIN_COHORT_FOR_CLAIM}: {usable:.1%} "
         "(these can carry a quoted percentage; the rest fall back to the checklist)"

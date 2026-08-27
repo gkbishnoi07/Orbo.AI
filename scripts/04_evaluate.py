@@ -23,6 +23,8 @@ Run:  python scripts/04_evaluate.py [--cases 1000] [--method tfidf]
 from __future__ import annotations
 
 import argparse
+import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -42,10 +44,15 @@ from src.evaluate import (  # noqa: E402
     held_out_pairs,
 )
 from src.hybrid import CFOnlyRecommender, ContentOnlyRecommender, HybridRecommender  # noqa: E402
+from src.tone import ToneAffinity, build_tone_stats  # noqa: E402
 from src.recommender import PopularityRecommender, RandomRecommender  # noqa: E402
 from src.schema import ProductCols, ReviewCols  # noqa: E402
+from src.service import DEFAULT_METHOD  # noqa: E402
 
 REPORTS = Path("reports")
+
+LATENCY_BUDGET_MS = 100.0
+"""Budget the harness checks p95 model-inference latency against."""
 
 
 def drop_held_out(reviews: pd.DataFrame, cases: list[EvalCase]) -> pd.DataFrame:
@@ -75,11 +82,18 @@ def build_models(products, train_reviews, matrices: dict[str, tuple]):
         content.name = f"content-{method}"
         models.append(content)
 
+    # Tone affinity is rebuilt from the TRAINING split, never from the committed
+    # artifact. The artifact is derived from every review including the held-out
+    # ones, so using it here would leak exactly the interactions being predicted
+    # — the same mistake the train/test split exists to prevent.
+    tone = ToneAffinity(build_tone_stats(train_reviews))
+
     for method, (matrix, ids) in matrices.items():
         hybrid = HybridRecommender(
             content=ContentOnlyRecommender(matrix, ids),
             collaborative=CohortCFRecommender(),
             popularity=PopularityRecommender(),
+            tone=tone,
         )
         hybrid.name = f"hybrid-{method}"
         models.append(hybrid)
@@ -189,10 +203,21 @@ def summarise_findings(warm, cold, leak, k: int) -> str:
                 f"({warm.loc[clean_name, ndcg]:.4f} -> {leak.loc[model, ndcg]:.4f})."
             )
 
+    # Compare against the budget rather than asserting it. The previous version
+    # printed "inside the 100ms budget" unconditionally, and on a loaded machine
+    # emitted "p95 110ms ... inside the 100ms budget".
     slowest = warm["latency_p95_ms"].max()
+    within = slowest <= LATENCY_BUDGET_MS
+    verdict = (
+        f"inside the {LATENCY_BUDGET_MS:.0f}ms budget"
+        if within
+        else f"**over the {LATENCY_BUDGET_MS:.0f}ms budget**"
+    )
     lines.append(
-        f"- **Latency:** p95 {slowest:.0f}ms across all models, inside the 100ms "
-        "budget. Embeddings are precomputed, so no model does heavy work per request."
+        f"- **Model inference latency:** p95 {slowest:.0f}ms across all models, "
+        f"{verdict}. This is `Recommender.recommend()` only — it excludes "
+        "explanation generation and all Streamlit rendering, so it is not "
+        "end-to-end user latency."
     )
     return "\n".join(lines)
 
@@ -209,7 +234,11 @@ def main() -> int:
     if not methods:
         print("No embeddings found. Run scripts/02_embed.py first.", file=sys.stderr)
         return 1
-    method = args.method or methods[0]
+    # Default to the method the app actually ships (src.service.DEFAULT_METHOD)
+    # rather than whichever name sorts first — the benchmark caption in the UI
+    # names this, and "minilm" there would describe a model nobody runs.
+    default = DEFAULT_METHOD if DEFAULT_METHOD in methods else methods[0]
+    method = args.method or default
     print(f"diversity measured in: {method}  (available: {', '.join(methods)})")
 
     matrices = {m: artifacts.load_embeddings(m) for m in methods}
@@ -323,7 +352,45 @@ def main() -> int:
     )
     out = REPORTS / "evaluation.md"
     out.write_text(report)
-    print(f"\nwritten to {out}")
+
+    # Machine-readable twin of the table above. The UI reads this instead of
+    # carrying its own copy of the numbers: a hardcoded metric in the interface
+    # is indistinguishable from a measured one to a reader, and silently goes
+    # stale the moment a weight changes.
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip() or "unknown"
+    except OSError:
+        commit = "unknown"
+
+    benchmark = {
+        "commit": commit,
+        "k": args.k,
+        "warm_cases": len(warm),
+        "cold_cases": len(cold),
+        "embedding_method": method,
+        "note": (
+            "Latency columns are model inference only: the harness times "
+            "Recommender.recommend() and excludes explanation generation and all "
+            "Streamlit rendering."
+        ),
+        "models": {
+            str(name): {
+                "warm": {m: float(warm_table.loc[name, m]) for m in warm_table.columns},
+                "cold": (
+                    {m: float(cold_table.loc[name, m]) for m in cold_table.columns}
+                    if name in cold_table.index
+                    else None
+                ),
+            }
+            for name in warm_table.index
+        },
+    }
+    json_out = REPORTS / "evaluation.json"
+    json_out.write_text(json.dumps(benchmark, indent=2))
+    print(f"\nwritten to {out} and {json_out}")
     return 0
 
 

@@ -51,6 +51,7 @@ from .collaborative import CohortCFRecommender
 from .content import ContentRecommender
 from .recommender import PopularityRecommender, Recommender
 from .schema import ProductCols, Query
+from .tone import ToneAffinity
 
 
 def _scale(series: pd.Series) -> pd.Series:
@@ -70,6 +71,7 @@ class HybridRecommender(Recommender):
         content: ContentRecommender,
         collaborative: CohortCFRecommender,
         popularity: PopularityRecommender | None = None,
+        tone: ToneAffinity | None = None,
         *,
         weight_content: float = 0.15,
         weight_cf: float = 0.80,
@@ -77,6 +79,7 @@ class HybridRecommender(Recommender):
         cold_weight_content: float = 0.10,
         cold_weight_cf: float = 0.30,
         cold_weight_popularity: float = 0.60,
+        weight_tone: float = 0.10,
         mmr_lambda: float = 0.85,
         candidate_pool: int = 60,
     ) -> None:
@@ -84,6 +87,13 @@ class HybridRecommender(Recommender):
         self.content = content
         self.collaborative = collaborative
         self.popularity = popularity or PopularityRecommender()
+        self.tone = tone
+        # Added on top of the three existing weights rather than folded into
+        # them, so the blend those weights were swept for is untouched. The tone
+        # term is centred on zero, so a query with no tone — or a product with no
+        # tone history — contributes exactly nothing and the result is identical
+        # to the previous behaviour.
+        self.weight_tone = weight_tone
         self.weight_content = weight_content
         self.weight_cf = weight_cf
         self.weight_popularity = weight_popularity
@@ -135,10 +145,21 @@ class HybridRecommender(Recommender):
             * popularity_scores.reindex(content_scores.index, fill_value=0.0)
         )
 
+        # Signed, unscaled, and added last. It is not min-max scaled like the
+        # others because scaling would move a genuine "no signal" of 0 up to
+        # whatever the lowest affinity happens to be, turning an abstention into
+        # an opinion.
+        if self.tone is not None and query.skin_tone:
+            tone_scores = self.tone.scores(query.skin_tone, content_scores.index)
+            total = total + self.weight_tone * tone_scores
+        else:
+            tone_scores = pd.Series(0.0, index=content_scores.index)
+
         self._components = {
             "content": content_scores,
             "collaborative": cf_scores,
             "popularity": popularity_scores,
+            "tone": tone_scores,
             **{k: v for k, v in content_parts.items()},
             **{k: v for k, v in cf_parts.items()},
         }

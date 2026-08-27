@@ -19,6 +19,7 @@ EMBEDDING_IDS = "embedding_ids.json"
 PRODUCTS = "products.parquet"
 INTERACTIONS = "interactions.parquet"
 COHORT_STATS = "cohort_stats.parquet"
+TONE_STATS = "tone_stats.parquet"
 
 
 def embedding_path(method: str, root: Path = ARTIFACTS) -> Path:
@@ -67,3 +68,14 @@ def load_interactions(root: Path = ARTIFACTS) -> pd.DataFrame:
 
 def load_cohort_stats(root: Path = ARTIFACTS) -> pd.DataFrame:
     return pd.read_parquet(Path(root) / COHORT_STATS)
+
+
+def load_tone_stats(root: Path = ARTIFACTS) -> pd.DataFrame:
+    """Per (product, tone band) counts. Missing on artifacts built before tone
+    scoring existed, in which case the tone term simply contributes nothing."""
+    path = Path(root) / TONE_STATS
+    if not path.exists():
+        return pd.DataFrame(
+            columns=["product_id", "skin_tone", "n_reviews", "n_positive"]
+        )
+    return pd.read_parquet(path)

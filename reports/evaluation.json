@@ -1,0 +1,206 @@
+{
+  "commit": "89bd80d",
+  "k": 10,
+  "warm_cases": 1000,
+  "cold_cases": 1000,
+  "embedding_method": "tfidf",
+  "note": "Latency columns are model inference only: the harness times Recommender.recommend() and excludes explanation generation and all Streamlit rendering.",
+  "models": {
+    "random": {
+      "warm": {
+        "precision@10": 0.0001,
+        "recall@10": 0.001,
+        "ndcg@10": 0.0003868528072345416,
+        "map@10": 0.0002,
+        "coverage": 0.687661878973393,
+        "latency_p50_ms": 6.662003997917054,
+        "latency_p95_ms": 7.994624052298604,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.9036714077332577,
+        "novelty": 8.233176709354478
+      },
+      "cold": {
+        "precision@10": 0.0,
+        "recall@10": 0.0,
+        "ndcg@10": 0.0,
+        "map@10": 0.0,
+        "coverage": 0.685778196373911,
+        "latency_p50_ms": 5.986043001030339,
+        "latency_p95_ms": 7.211399205698398,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.9044638126887085,
+        "novelty": 8.218969359951345
+      }
+    },
+    "popularity": {
+      "warm": {
+        "precision@10": 0.006,
+        "recall@10": 0.06,
+        "ndcg@10": 0.030737618949848014,
+        "map@10": 0.021979761904761905,
+        "coverage": 0.0021191429244172355,
+        "latency_p50_ms": 6.146702500700485,
+        "latency_p95_ms": 7.261384097728295,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.8743799279877862,
+        "novelty": -2.5978974944865527
+      },
+      "cold": {
+        "precision@10": 0.011,
+        "recall@10": 0.11,
+        "ndcg@10": 0.06929947129575197,
+        "map@10": 0.05704682539682539,
+        "coverage": 0.0014127619496114904,
+        "latency_p50_ms": 5.4253299967967905,
+        "latency_p95_ms": 6.507000398050876,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.8757310129543991,
+        "novelty": -2.611080162949136
+      }
+    },
+    "cf-only": {
+      "warm": {
+        "precision@10": 0.046599999999999996,
+        "recall@10": 0.466,
+        "ndcg@10": 0.4134693372836633,
+        "map@10": 0.3973801587301587,
+        "coverage": 0.1551683541323287,
+        "latency_p50_ms": 6.303270001808414,
+        "latency_p95_ms": 7.476338598280563,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.7482110191671106,
+        "novelty": 0.029233702760658446
+      },
+      "cold": {
+        "precision@10": 0.0103,
+        "recall@10": 0.103,
+        "ndcg@10": 0.06928047036868515,
+        "map@10": 0.058719047619047615,
+        "coverage": 0.0023546032493524842,
+        "latency_p50_ms": 5.73119399996358,
+        "latency_p95_ms": 6.866167449697968,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.8376932223150877,
+        "novelty": -2.522291254144181
+      }
+    },
+    "content-minilm": {
+      "warm": {
+        "precision@10": 0.014700000000000001,
+        "recall@10": 0.147,
+        "ndcg@10": 0.11656211545163761,
+        "map@10": 0.10716309523809524,
+        "coverage": 0.11031316223216388,
+        "latency_p50_ms": 8.856835000187857,
+        "latency_p95_ms": 10.84801975011942,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.6462047165326382,
+        "novelty": 3.89325451191099
+      },
+      "cold": {
+        "precision@10": 0.0006,
+        "recall@10": 0.006,
+        "ndcg@10": 0.0023684230018960768,
+        "map@10": 0.0012595238095238096,
+        "coverage": 0.0037673651989639746,
+        "latency_p50_ms": 8.57127400013269,
+        "latency_p95_ms": 10.632020302364253,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.6098079708288615,
+        "novelty": 5.030297983277274
+      }
+    },
+    "content-tfidf": {
+      "warm": {
+        "precision@10": 0.028300000000000006,
+        "recall@10": 0.283,
+        "ndcg@10": 0.24041551904985778,
+        "map@10": 0.226884126984127,
+        "coverage": 0.1658817989168825,
+        "latency_p50_ms": 8.668037997267675,
+        "latency_p95_ms": 10.668531898409128,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.5212135865988184,
+        "novelty": 3.7613797622851664
+      },
+      "cold": {
+        "precision@10": 0.00030000000000000003,
+        "recall@10": 0.003,
+        "ndcg@10": 0.0019319597492354387,
+        "map@10": 0.0016111111111111111,
+        "coverage": 0.0037673651989639746,
+        "latency_p50_ms": 8.336505998158827,
+        "latency_p95_ms": 10.18724794848822,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.47877432681036225,
+        "novelty": 4.932024834109836
+      }
+    },
+    "hybrid-minilm": {
+      "warm": {
+        "precision@10": 0.046,
+        "recall@10": 0.46,
+        "ndcg@10": 0.4109994637963162,
+        "map@10": 0.3958932539682539,
+        "coverage": 0.12973863903932187,
+        "latency_p50_ms": 11.29638749625883,
+        "latency_p95_ms": 14.080757400006405,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.7557885251161254,
+        "novelty": -0.39082138956802115
+      },
+      "cold": {
+        "precision@10": 0.0097,
+        "recall@10": 0.097,
+        "ndcg@10": 0.06654227214074973,
+        "map@10": 0.05696507936507937,
+        "coverage": 0.0021191429244172355,
+        "latency_p50_ms": 10.744782000983832,
+        "latency_p95_ms": 12.98249414539896,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.8141119583389625,
+        "novelty": -2.549594484055107
+      }
+    },
+    "hybrid-tfidf": {
+      "warm": {
+        "precision@10": 0.0458,
+        "recall@10": 0.458,
+        "ndcg@10": 0.4112355554665969,
+        "map@10": 0.3966853174603175,
+        "coverage": 0.14186484577348718,
+        "latency_p50_ms": 10.96403599876794,
+        "latency_p95_ms": 13.488896449052845,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.7396330492312052,
+        "novelty": -0.12089352708349116
+      },
+      "cold": {
+        "precision@10": 0.009600000000000001,
+        "recall@10": 0.096,
+        "ndcg@10": 0.06527253927341801,
+        "map@10": 0.05571190476190476,
+        "coverage": 0.002472333411820108,
+        "latency_p50_ms": 10.506782502488932,
+        "latency_p95_ms": 12.93926479484071,
+        "empty_result_rate": 0.0,
+        "n_cases": 1000.0,
+        "diversity": 0.8346342047161099,
+        "novelty": -2.516049356365933
+      }
+    }
+  }
+}
